@@ -1,4 +1,5 @@
 // Courtesy of ChatGPT
+#include <Arduino.h>
 
 #include <Wire.h>
 

@@ -1,0 +1,15 @@
+{
+  "configurations": [
+    {
+      "name": "Linux",
+      "includePath": [
+        "${workspaceFolder}/libraries/**",
+        "${env:HOME}/.arduino15/packages/**/hardware/**/**/cores/**",
+        "${env:HOME}/.arduino15/packages/**/hardware/**/**/libraries/**",
+        "${env:HOME}/.arduino15/packages/**/hardware/**/**/variants/**",
+        "${env:HOME}/.arduino15/packages/**/tools/**/**/include/**"
+      ]
+    }
+  ],
+  "version": 4
+}
