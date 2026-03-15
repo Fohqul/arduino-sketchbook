@@ -52,7 +52,14 @@ static_assert(MICROSTEP_MULTIPLIER == 1 || MICROSTEP_MULTIPLIER == 2 || MICROSTE
 
 SSD1306AsciiWire display;
 
-static int lastClk;
+volatile int lastClk;
+volatile enum direction lastDirection = DIRECTION_CLOCKWISE;
+
+volatile byte edges = 2;
+volatile bool edgesCommitted = false;
+volatile int startingPosition = 0;
+volatile bool startingPositionCommitted = false;
+volatile byte edge = 1;
 
 static void step()
 {
@@ -60,6 +67,32 @@ static void step()
 	digitalWrite(PIN_STEP, STEP_ON);
 	delayMicroseconds(PULSE_LENGTH_USECS);
 	digitalWrite(PIN_STEP, STEP_OFF);
+}
+
+static void readEncoder()
+{
+	const int clk = digitalRead(PIN_CLK);
+	if (clk == lastClk)
+		return;
+	lastClk = clk;
+	lastDirection = static_cast<enum direction>(digitalRead(PIN_DT) != clk);
+	const int8_t delta = lastDirection == DIRECTION_CLOCKWISE ? 1 : -1;
+	if (!edgesCommitted)
+		edges = constrain(edges + delta, 2, 12);
+	else if (!startingPositionCommitted)
+	{
+		digitalWrite(PIN_DIR, lastDirection);
+		step();
+		startingPosition += delta;
+	}
+	else
+	{
+		edge += delta;
+		if (edge == 0)
+			edge = edges;
+		else if (edge > edges)
+			edge = 1;
+	}
 }
 
 void setup()
@@ -76,10 +109,10 @@ void setup()
 	display.print('2');
 
 	// encoder
-	pinMode(PIN_CLK, INPUT);
+	pinMode(PIN_CLK, INPUT_PULLUP);
 	lastClk = digitalRead(PIN_CLK);
-	// attachInterrupt(digitalPinToInterrupt(PIN_CLK), readEncoder, FALLING);
-	pinMode(PIN_DT, INPUT);
+	attachInterrupt(digitalPinToInterrupt(PIN_CLK), readEncoder, CHANGE);
+	pinMode(PIN_DT, INPUT_PULLUP);
 	pinMode(PIN_SW, INPUT_PULLUP);
 
 	// motor
@@ -129,11 +162,9 @@ void loop()
 	static bool lastPressed = digitalRead(PIN_SW) == BUTTON_PRESSED_TRUE;
 	static unsigned long lastSwitchChanged = 0;
 
-	static byte edges = 2;
-	static bool edgesCommitted = false;
-	static int startingPosition = 0;
-	static bool startingPositionCommitted = false;
-	static byte edge = 1;
+	static byte lastEdges = 1;
+	static int lastStartingPosition = 0;
+	static byte lastEdge = 1;
 	static int position = 0;
 
 	bool raw = digitalRead(PIN_SW) == BUTTON_PRESSED_TRUE;
@@ -174,6 +205,8 @@ void loop()
 				edgesCommitted = false;
 				startingPosition = 0;
 				startingPositionCommitted = false;
+				lastEdges = 1;
+				lastEdge = 1;
 				edge = 1;
 				position = 0;
 				display.setCursor(0, 1);
@@ -184,75 +217,68 @@ void loop()
 		}
 	}
 
-	int clk = digitalRead(PIN_CLK);
-	if (clk != lastClk)
+	if (!edgesCommitted)
 	{
-		const enum direction direction = static_cast<enum direction>(digitalRead(PIN_DT) != clk);
-		const bool clockwise = direction == DIRECTION_CLOCKWISE;
-		const int8_t delta = clockwise ? 1 : -1;
-		if (!edgesCommitted)
+		if (edges != lastEdges)
 		{
-			edges = constrain(edges + delta, 2, 12);
+			lastEdges = edges;
 			display.setCursor(64, 1);
 			display.print(edges);
 			display.print(F("  "));
 		}
-		else if (!startingPositionCommitted)
+		return;
+	}
+
+	if (!startingPositionCommitted)
+	{
+		if (startingPosition != lastStartingPosition)
 		{
-			digitalWrite(PIN_DIR, direction);
-			step();
-			startingPosition += delta;
+			lastStartingPosition = startingPosition;
 			display.setCursor(0, 2);
 			display.print(startingPosition);
 			display.print(F("  "));
 		}
-		else
-		{
-			edge += delta;
-			if (edge == 0)
-				edge = edges;
-			else if (edge > edges)
-				edge = 1;
-
-			display.setCursor(64, 1);
-			display.print(edge);
-			display.print(F(" / "));
-			display.print(edges);
-			display.print(F("  "));
-
-			// todo apparently this bad
-			int newPosition = round(MICROSTEPS_PER_REVOLUTION * (static_cast<double>(edge - 1) / static_cast<double>(edges)));
-			if (newPosition < 0)
-				newPosition += MICROSTEPS_PER_REVOLUTION * (newPosition / MICROSTEPS_PER_REVOLUTION);
-			else if (newPosition >= MICROSTEPS_PER_REVOLUTION)
-				newPosition -= MICROSTEPS_PER_REVOLUTION * (newPosition / MICROSTEPS_PER_REVOLUTION);
-
-			digitalWrite(PIN_DIR, direction);
-
-			int ahead, behind;
-			if (clockwise)
-			{
-				ahead = newPosition;
-				behind = position;
-			}
-			else
-			{
-				ahead = position;
-				behind = newPosition;
-			}
-			int delta = ahead - behind;
-			if (delta < 0)
-				delta = (ahead + MICROSTEPS_PER_REVOLUTION) - behind;
-
-			for (unsigned int i = 0; i < abs(delta); ++i)
-			{
-				step();
-				delayMicroseconds(5);
-			}
-
-			position = newPosition;
-		}
-
-		lastClk = clk;
+		return;
 	}
+
+	if (lastEdge == edge)
+		return;
+
+	lastEdge = edge;
+	display.setCursor(64, 1);
+	display.print(edge);
+	display.print(F(" / "));
+	display.print(edges);
+	display.print(F("  "));
+
+	// todo apparently this bad
+	int newPosition = round(MICROSTEPS_PER_REVOLUTION * (static_cast<double>(edge - 1) / static_cast<double>(edges)));
+	if (newPosition < 0)
+		newPosition += MICROSTEPS_PER_REVOLUTION * (newPosition / MICROSTEPS_PER_REVOLUTION);
+	else if (newPosition >= MICROSTEPS_PER_REVOLUTION)
+		newPosition -= MICROSTEPS_PER_REVOLUTION * (newPosition / MICROSTEPS_PER_REVOLUTION);
+
+	digitalWrite(PIN_DIR, lastDirection);
+
+	int ahead, behind;
+	if (lastDirection == DIRECTION_CLOCKWISE)
+	{
+		ahead = newPosition;
+		behind = position;
+	}
+	else
+	{
+		ahead = position;
+		behind = newPosition;
+	}
+	int delta = ahead - behind;
+	if (delta < 0)
+		delta = (ahead + MICROSTEPS_PER_REVOLUTION) - behind;
+	for (unsigned int i = 0; i < abs(delta); ++i)
+	{
+		step();
+		delayMicroseconds(5);
+	}
+
+	position = newPosition;
 }
