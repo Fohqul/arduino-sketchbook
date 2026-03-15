@@ -1,20 +1,29 @@
+#include <SSD1306AsciiWire.h>
+
+#define USING_INA3221 0
+#define INA219_CALIBRATION_LEVEL 2
+
+static_assert(INA219_CALIBRATION_LEVEL == 0 || INA219_CALIBRATION_LEVEL == 1 || INA219_CALIBRATION_LEVEL == 2, "Invalid calibration level - must be one of 0, 1 or 2");
+
+#if USING_INA3221
 #include <Adafruit_INA3221.h>
 
-#include <Wire.h>
+constexpr byte INA3221_I2C_ADDRESS = 0x40; // can be any of 0x40, 0x41, 0x44, and 0x45
+constexpr byte INA3221_CHANNEL = 0;
 
-#include <SSD1306AsciiWire.h>
+// Referencing: https://manuals.plus/ae/1005005434867322
+static Adafruit_INA3221 ina3221;
+#else
+#include <Adafruit_INA219.h>
+
+static Adafruit_INA219 ina219;
+#endif
 
 constexpr unsigned long SAMPLE_RATE_MS = 250;
 
 constexpr byte DISPLAY_I2C_ADDRESS = 0x3C;
 
-constexpr byte INA3221_I2C_ADDRESS = 0x40; // can be any of 0x40, 0x41, 0x44, and 0x45
-constexpr byte INA3221_CHANNEL = 0;
-
 static SSD1306AsciiWire display;
-
-// Referencing: https://manuals.plus/ae/1005005434867322
-static Adafruit_INA3221 ina3221;
 
 static unsigned long lastSample = 0;
 
@@ -26,6 +35,7 @@ void setup()
 	display.begin(&Adafruit128x32, DISPLAY_I2C_ADDRESS);
 	display.clear();
 
+#if USING_INA3221
 	if (!ina3221.begin(INA3221_I2C_ADDRESS)) [[unlikely]]
 	{
 		display.print(F("Failed to connect to\nINA3221"));
@@ -34,6 +44,20 @@ void setup()
 	ina3221.setAveragingMode(INA3221_AVG_16_SAMPLES);
 	ina3221.setShuntResistance(INA3221_CHANNEL, 0.05);
 	ina3221.setPowerValidLimits(3.0, 15.0);
+#else
+	if (!ina219.begin()) [[unlikely]]
+	{
+		display.print(F("Failed to connect to\nINA219"));
+		exit(EXIT_FAILURE);
+	}
+#if INA219_CALIBRATION_LEVEL == 0
+	ina219.setCalibration_32V_2A();
+#elif INA219_CALIBRATION_LEVEL == 1
+	ina219.setCalibration_32V_1A();
+#elif INA219_CALIBRATION_LEVEL == 2
+	ina219.setCalibration_16V_400mA();
+#endif
+#endif
 	lastSample = millis();
 }
 
@@ -83,8 +107,14 @@ void loop()
 	static double Ah = 0.0;
 	static double Wh = 0.0;
 
+#if USING_INA3221
 	const float V = ina3221.getBusVoltage(INA3221_CHANNEL);
 	const float A = ina3221.getCurrentAmps(INA3221_CHANNEL);
+#else
+	constexpr double mA_TO_A = 1000;
+	const float V = ina219.getBusVoltage_V();
+	const float A = static_cast<double>(ina219.getCurrent_mA()) / mA_TO_A;
+#endif
 	const unsigned long now = millis();
 	const double hours = static_cast<double>(now - lastSample) / 3600000.0;
 	Ah += A * hours;
