@@ -179,65 +179,63 @@ void loop()
 	{
 		lastPressed = pressed;
 
-		if (pressed)
-		{
-			display.clear();
+		if (!pressed)
+			return;
 
-			if (!edgesCommitted)
-			{
-				edgesCommitted = true;
-				display.println(F("Nastavenie 0 pozicii"));
-				display.print(startingPosition);
-			}
-			else if (!startingPositionCommitted)
-			{
-				startingPositionCommitted = true;
-				display.setRow(1);
-				display.print(F("Poloha: "));
-				display.setCol(64);
-				display.print(edge);
-				display.print(F(" / "));
-				display.print(edges);
-			}
-			else
-			{
-				edges = 2;
-				edgesCommitted = false;
-				startingPosition = 0;
-				startingPositionCommitted = false;
-				lastEdges = 1;
-				lastEdge = 1;
-				edge = 1;
-				position = 0;
-				display.setCursor(0, 1);
-				display.print(F("Polohy: "));
-				display.setCol(64);
-				display.print(edges);
-			}
+		display.clear();
+
+		if (!edgesCommitted)
+		{
+			edgesCommitted = true;
+			display.println(F("Nastavenie 0 pozicii"));
+			display.print(startingPosition);
+		}
+		else if (!startingPositionCommitted)
+		{
+			startingPositionCommitted = true;
+			display.setRow(1);
+			display.print(F("Poloha: "));
+			display.setCol(64);
+			display.print(edge);
+			display.print(F(" / "));
+			display.print(edges);
+		}
+		else
+		{
+			edges = 2;
+			edgesCommitted = false;
+			startingPosition = 0;
+			startingPositionCommitted = false;
+			lastEdges = 1;
+			lastEdge = 1;
+			edge = 1;
+			position = 0;
+			display.setCursor(0, 1);
+			display.print(F("Polohy: "));
+			display.setCol(64);
+			display.print(edges);
 		}
 	}
 
 	if (!edgesCommitted)
 	{
-		if (edges != lastEdges)
-		{
-			lastEdges = edges;
-			display.setCursor(64, 1);
-			display.print(edges);
-			display.print(F("  "));
-		}
+		if (edges == lastEdges)
+			return;
+		lastEdges = edges;
+		display.setCursor(64, 1);
+		display.print(edges);
+		display.print(F("  "));
 		return;
 	}
 
 	if (!startingPositionCommitted)
 	{
-		if (startingPosition != lastStartingPosition)
-		{
-			lastStartingPosition = startingPosition;
-			display.setCursor(0, 2);
-			display.print(startingPosition);
-			display.print(F("  "));
-		}
+		if (startingPosition == lastStartingPosition)
+			return;
+		lastStartingPosition = startingPosition;
+		display.setCursor(0, 2);
+		display.print(startingPosition);
+		display.print(F("  "));
 		return;
 	}
 
